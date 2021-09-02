@@ -1,0 +1,20 @@
+- name: Install aws cli tool
+  become: true
+  pip:
+    name: awscli
+
+- name: log into ECR
+  shell: "$(aws ecr get-login --no-include-email --region '{{ aws_region }}')"
+
+- name: Pull an image
+  shell: "docker pull {{ docker_image }}"
+
+- name: Run server
+  docker_container:
+    name: "server"
+    image: "{{ docker_image }}"
+    state: started
+    recreate: true
+    pull: true
+    ports:
+      - "8080:8080"

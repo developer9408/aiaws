@@ -1,0 +1,50 @@
+services:
+  - docker
+env:
+  global:
+    - secure: "QMMd4mO4uixZADB156xkzvryHdwiEK6GXdt56khfh2AKe+LeZPO3WOe/cYLZJNnNWl11b/tJyZUQTl9EgtJx5ocB7KhrHQ4P6363BHVrdaFY5AzKt26DF3enHCJ+yJhMYYsRmyuCQwlLvhiWurWmeh6Ialzvjcr6l4K1Lv+lmuGYJA9UiNUoFbUMM59qmDWATX2wPWgP7Q/+fuO+94f+h+X0k1agHrDRMIsD31NPWObV7AaimryHeeIi9F9rHUCqpkq3MHD5ZrFGdByo4nUmcrLew9JFaLY6iDUh0i8NuoAOoKoS0IAutr4+UB9xroYlzwzqKF242IRojoEtzUW64TvLa8SBkc/kZM1fWON9Q2CKlNXregVgSnUMoyPiUhcNrWmJkYJWUmjhZJcJClBF+YRHlsRfUnJ6q1PGp3ys4ROPB8CmDzFOfbgtLUf7s0TF4WH7jCN7Uv6SLhvt2uqtDykedrty47vEcuVZ16VjxCGrZgoTqGKGyy5uqCVPE78rY/H9OPwmg6arATgyBQt4ZUnme4HoMM0AadyMXiTpShV1zPKRZ32KqR0ajaCbUxAUfKVqbnisAv7fhACf6FGMrv8pkkc5/QOWZcKR/YIJNFAwOZbR4RdxR9It2nzXLHIY76xt60+n/AWEH0UWQ9BDOwaMbqoEysxeNf52a36PG0U="
+    - secure: "ZNsnFjSu9p0O9MerGDLxCT1DXy12T+AzI707CVcxRE07xehlZCTtqs+nEfdBWyMdgx+ZvEwK4f6CSASJvhlGSbE+B35kIcufEw3q0EYKI1kKf4vawiHiiF5qO7hDV2Ii6NtmElxhVxaE/Gc/MqjAytW36gAXrH8csuYlvVfeGcoL11RvA2qKcyYuWOXsElBKausgh5rm8GNWpatsJXxf1v/i1gRpLmPdtenExFB9aG98OKyV8qI5BPJ9zoIdUCM6MmTboJZiJNWwn5w9eijpoXTD6jWdQAdlLKITtcTxLWLEcfayR+NT2/PQIHt8wLAp+Mq4yvQEcPBhzYW1eeGOoiXj5WHOkRr/TDAwRk7NNEp2GzQ2/RaOf3LS1SHCjPZ4HZ3V02JVchEHahA6X/NCcLeAp8J4Hje2KfS9mY6JqBIdDuf6or9gKr/mbVNs8lSbEk7k0JzMqFBMDjaGH8BsZcKT7Qz61T3B2FiLG0JtR/ZQpL0i0oBo6Fva24zafYlrRYRzQupiXg7qN7k5a2Or4zwXll7TIJxa1YsKbGDcsaczoj2zu9DkHDYs/bTpGOmBxdnFoRLO1/2b9lxKhjll8s8T6mgBQkZXPhPD94uo5PZ0pnN9KkVXJuGln87mO8EwU0lAs9PJtc8tUxU7cHz2ec9UzDlTDuJwF6D5Asc/wZc="
+    - ENV=$($TRAVIS_BUILD_DIR/deploy/branch_name_to_env.sh)
+    - CONTAINER_TAG=$ENV
+    - AWS_DEFAULT_REGION="eu-central-1"
+    - PROJECT_NAME=healthy-picks
+    - DOCKER_REPO_URL="672421479272.dkr.ecr.eu-central-1.amazonaws.com/healthy-picks/nutriscore_${ENV}"
+    - DOCKER_IMAGE=${DOCKER_REPO_URL}:${CONTAINER_TAG}
+
+jobs:
+  include:
+    - stage: Build and push image
+      if: branch =~ ^(dev|master)$ and type = push
+      before_script: 
+        - pip install --user awscli
+        - export PATH=$PATH:$HOME/.local/bin # put aws in the path
+      script:
+        - docker build -t $DOCKER_IMAGE .
+        - eval $(aws ecr get-login --region $AWS_DEFAULT_REGION --no-include-email) #needs AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY envvars
+        - docker push $DOCKER_IMAGE
+    - stage: Deploy dev
+      if: branch = dev and type = push
+      env:
+        - ANSIBLE_HOST_KEY_CHECKING=false
+      before_install:
+        - openssl aes-256-cbc -K $encrypted_184680ef2e7a_key -iv $encrypted_184680ef2e7a_iv -in healthy-picks.pem.enc -out healthy-picks.pem -d
+        - sudo chmod 0700 ./healthy-picks.pem
+      install:
+        - sudo pip install ansible botocore boto3
+      before_script:
+        - cd deploy/ansible
+      script: ansible-playbook -i inventory -b  -u ubuntu --extra-vars "docker_image=${DOCKER_IMAGE}
+        aws_access_key=${AWS_ACCESS_KEY_ID} aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}
+        aws_region=${AWS_DEFAULT_REGION}" --private-key ../../healthy-picks.pem
+        playbook.yml || travis_terminate 1;
+    - stage: Deploy prod
+      if: branch = master and type = push
+      before_install:
+        - sudo apt-get install -y curl jq python python3-pip
+        - sudo pip install awscli
+        - export VERSION=$(cat package.json | jq -r .version)
+        - export TASK_DEFINITION_NAME=nutriscore_${PROJECT_NAME}_${ENV}
+        - export CLUSTER_NAME=backend_${PROJECT_NAME}_${ENV}
+        - export SERVICE_NAME=nutriscore_${PROJECT_NAME}_${ENV}
+      script:
+        - "$TRAVIS_BUILD_DIR/deploy/deploy.sh"

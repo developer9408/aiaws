@@ -1,0 +1,2 @@
+[dev]
+dev-nutriscore.healthypicks.nl ansible_connection=ssh ansible_user=ubuntu

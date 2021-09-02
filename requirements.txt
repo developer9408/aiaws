@@ -1,0 +1,12 @@
+jupyter 
+torch 
+opencv-contrib-python
+torchvision 
+tqdm 
+albumentations 
+sklearn 
+matplotlib 
+tensorboard 
+numpy
+bottle
+cherrypy

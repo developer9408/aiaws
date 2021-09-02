@@ -1,0 +1,13 @@
+data/
+runs/
+.env
+.idea
+.ipynb_checkpoints
+**/__pycache__/**
+
+*.pem
+*.pem.pub
+*.lcov
+.DS_Store
+
+/.vscode/
